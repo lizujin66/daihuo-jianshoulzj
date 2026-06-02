@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import type { Shot } from "@/lib/db/schema";
 import { useTemplateStore } from "@/lib/stores/template-store";
+import { uuid } from "@/lib/utils";
 
 // 模拟生成的脚本数据
 const mockScripts = [
@@ -96,7 +97,7 @@ export default function ScriptPage() {
   const doSaveTemplate = () => {
     if (!templateName.trim() || !currentScript) return;
     addTemplate({
-      id: crypto.randomUUID(),
+      id: uuid(),
       name: templateName.trim(),
       styleType: currentScript.styleType,
       shots: currentScript.shots as Shot[],

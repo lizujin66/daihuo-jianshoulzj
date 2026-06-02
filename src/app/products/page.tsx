@@ -20,6 +20,7 @@ import {
   useProductLibraryStore,
   type ProductItem,
 } from "@/lib/stores/product-library-store";
+import { uuid } from "@/lib/utils";
 
 // 品类选项
 const categoryOptions = [
@@ -87,7 +88,7 @@ export default function ProductsPage() {
         .slice(0, remaining)
         .filter((f) => f.type.startsWith("image/"))
         .map((file) => ({
-          id: crypto.randomUUID(),
+          id: uuid(),
           url: URL.createObjectURL(file),
           file,
         }));
@@ -137,7 +138,7 @@ export default function ProductsPage() {
     // 将已有图片 URL 转为展示格式
     setImages(
       product.images.map((url) => ({
-        id: crypto.randomUUID(),
+        id: uuid(),
         url,
       }))
     );
@@ -163,7 +164,7 @@ export default function ProductsPage() {
     } else {
       // 新增模式
       const newProduct: ProductItem = {
-        id: crypto.randomUUID(),
+        id: uuid(),
         name: name.trim(),
         category,
         description: description.trim() || undefined,

@@ -20,6 +20,7 @@ import { LuPlus, LuTrash2, LuUser, LuStar, LuUpload, LuPalette } from "react-ico
 import { useSettingsStore } from "@/lib/stores/settings-store";
 import { useCharacterStore, type Character } from "@/lib/stores/project-store";
 import { useBrandStore } from "@/lib/stores/brand-store";
+import { uuid } from "@/lib/utils";
 
 // AI 平台配置信息
 const AI_PROVIDERS = [
@@ -624,7 +625,7 @@ function CharacterManager() {
       });
     } else {
       addCharacter({
-        id: crypto.randomUUID(),
+        id: uuid(),
         name: form.name,
         description: form.description,
         appearance: form.appearance,
