@@ -17,6 +17,20 @@ if (!fs.existsSync(DB_DIR)) {
 // 创建 better-sqlite3 连接实例
 const sqlite = new Database(DB_PATH);
 
+// Ensure the `product_id` column exists in `projects` (for older DBs)
+try {
+  const hasProductId = sqlite
+    .prepare(`PRAGMA table_info(projects)`)
+    .all()
+    .some((col) => col.name === "product_id");
+  if (!hasProductId) {
+    sqlite.exec(`ALTER TABLE projects ADD COLUMN product_id text;`);
+    console.log("Added missing `product_id` column to `projects` table.");
+  }
+} catch (e) {
+  console.error("Failed to ensure `product_id` column:", e);
+}
+
 // 开启 WAL 模式，提升并发读写性能
 sqlite.pragma("journal_mode = WAL");
 // 开启外键约束
@@ -27,11 +41,10 @@ export const db = drizzle(sqlite, { schema });
 
 // 服务启动时，自动运行数据库迁移
 try {
-  const migrationsFolder = path.join(process.cwd(), "drizzle");
-  if (fs.existsSync(migrationsFolder)) {
-    migrate(db, { migrationsFolder });
-    console.log("Database migrations applied successfully.");
-  }
+  // Debug info – show cwd and candidates for migrations folder
+  console.log("process.cwd():", process.cwd());
+  console.log("migration candidates:", migrationCandidates);
+
 } catch (error) {
   console.error("Failed to run database migrations:", error);
 }
