@@ -1,4 +1,5 @@
 import { drizzle } from "drizzle-orm/better-sqlite3";
+import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
@@ -23,6 +24,17 @@ sqlite.pragma("foreign_keys = ON");
 
 // 创建 drizzle ORM 实例，绑定 schema 以支持关系查询
 export const db = drizzle(sqlite, { schema });
+
+// 服务启动时，自动运行数据库迁移
+try {
+  const migrationsFolder = path.join(process.cwd(), "drizzle");
+  if (fs.existsSync(migrationsFolder)) {
+    migrate(db, { migrationsFolder });
+    console.log("Database migrations applied successfully.");
+  }
+} catch (error) {
+  console.error("Failed to run database migrations:", error);
+}
 
 // 兼容函数式调用
 export function getDb() {
