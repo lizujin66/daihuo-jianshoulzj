@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
-import { LuWand, LuClock, LuImage, LuArrowRight, LuBookmarkPlus, LuLoader2 } from "react-icons/lu";
+import { LuWand, LuClock, LuImage, LuArrowRight, LuBookmarkPlus, LuLoader } from "react-icons/lu";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -140,7 +140,7 @@ export default function ScriptPage() {
     return (
       <div className="min-h-screen grid-bg flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <LuLoader2 className="animate-spin h-8 w-8 text-primary" />
+          <LuLoader className="animate-spin h-8 w-8 text-primary" />
           <span className="text-sm text-muted-foreground">正在加载脚本数据...</span>
         </div>
       </div>
@@ -205,7 +205,7 @@ export default function ScriptPage() {
             </div>
 
             <div className="space-y-3">
-              {scripts.map((script, index) => (
+              {scripts.map((script: any, index: number) => (
                 <Card
                   key={script.id}
                   className={`cursor-pointer transition-all ${selectedScript === index ? "ring-2 ring-primary neon-glow" : "glass-card card-hover"}`}
@@ -224,7 +224,7 @@ export default function ScriptPage() {
                     </div>
                     {/* 镜头类型预览条 */}
                     <div className="mt-3 flex gap-0.5 h-1.5 rounded-full overflow-hidden">
-                      {script.shots.map((shot) => {
+                      {script.shots.map((shot: any) => {
                         const colors: Record<string, string> = {
                           hook: "bg-red-500", pain_point: "bg-orange-500",
                           product_reveal: "bg-blue-500", demo: "bg-green-500",
@@ -263,8 +263,8 @@ export default function ScriptPage() {
 
               <TabsContent value="timeline" className="mt-0">
                 <div className="space-y-3">
-                  {currentScript?.shots.map((shot, index) => {
-                    const typeInfo = shotTypeLabels[shot.type];
+                  {currentScript?.shots.map((shot: any, index: number) => {
+                    const typeInfo = shotTypeLabels[shot.type as Shot["type"]];
                     return (
                       <Card key={shot.shotId} className="glass-card overflow-hidden">
                         <CardContent className="p-0">
@@ -322,12 +322,12 @@ export default function ScriptPage() {
                     <h3 className="font-medium text-sm mb-2">完整配音文案</h3>
                     <Textarea
                       className="min-h-[300px] bg-background/50 text-sm leading-relaxed"
-                      defaultValue={currentScript?.shots.map((s) => s.voiceover).filter(Boolean).join("\n\n")}
+                      defaultValue={currentScript?.shots.map((s: any) => s.voiceover).filter(Boolean).join("\n\n")}
                     />
                     <p className="text-xs text-muted-foreground">
-                      总字数：{currentScript?.shots.reduce((sum, s) => sum + (s.voiceover?.length || 0), 0)} 字 ·
+                      总字数：{currentScript?.shots.reduce((sum: number, s: any) => sum + (s.voiceover?.length || 0), 0)} 字 ·
                       预计时长：{currentScript?.totalDuration}s ·
-                      语速：约 {Math.round((currentScript?.shots.reduce((sum, s) => sum + (s.voiceover?.length || 0), 0) || 0) / (currentScript?.totalDuration || 1) * 10) / 10} 字/秒
+                      语速：约 {Math.round((currentScript?.shots.reduce((sum: number, s: any) => sum + (s.voiceover?.length || 0), 0) || 0) / (currentScript?.totalDuration || 1) * 10) / 10} 字/秒
                     </p>
                   </CardContent>
                 </Card>

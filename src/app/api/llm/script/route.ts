@@ -113,7 +113,7 @@ export async function POST(req: NextRequest) {
           await db.insert(dbScripts).values({
             projectId: projectId,
             title: script.title,
-            styleType: script.styleType,
+            styleType: script.styleType as "pain_point" | "scene" | "comparison" | "story" | "custom",
             totalDuration: script.totalDuration,
             shots: script.shots,
             selected: false,

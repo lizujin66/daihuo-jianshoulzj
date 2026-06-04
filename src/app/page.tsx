@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { LuSettings, LuPlus, LuZap, LuVideo, LuFilm, LuPackage, LuTriangleAlert, LuLoader2 } from "react-icons/lu";
+import { LuSettings, LuPlus, LuZap, LuVideo, LuFilm, LuPackage, LuTriangleAlert, LuLoader } from "react-icons/lu";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -223,7 +223,7 @@ export default function HomePage() {
           {loading ? (
             <Card className="glass-card">
               <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-                <LuLoader2 className="animate-spin h-8 w-8 text-primary mb-3" />
+                <LuLoader className="animate-spin h-8 w-8 text-primary mb-3" />
                 <p className="text-sm text-muted-foreground">正在加载我的项目...</p>
               </CardContent>
             </Card>
