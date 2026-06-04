@@ -11,6 +11,7 @@ import {
   buildUserPrompt,
   buildBatchPrompt,
   type ScriptGenerationInput,
+  type ScriptStyleType,
 } from "./prompts";
 import type { Shot } from "@/lib/db/schema";
 
