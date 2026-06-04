@@ -180,7 +180,7 @@ export async function generateScript(input: ScriptInput): Promise<GeneratedScrip
         { role: "user", content: userPrompt },
       ],
       temperature: 0.8,
-      max_tokens: 16000,
+      max_tokens: 4096,
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -335,8 +335,27 @@ export async function analyzeProduct(
   imageUrls: string[],
   config: LLMConfig,
 ): Promise<string> {
-  const client = createClient(config);
   const model = config.visionModel || config.model;
+
+  // 检测是否为不支持视觉的已知文本模型
+  const modelLower = model.toLowerCase();
+  const isKnownTextOnly =
+    modelLower.includes("deepseek") ||
+    modelLower.includes("gpt-3.5") ||
+    modelLower.includes("r1") ||
+    modelLower.includes("v3") ||
+    (modelLower.includes("llama") && !modelLower.includes("vision")) ||
+    modelLower.includes("qwen-turbo") ||
+    modelLower.includes("qwen-plus") ||
+    modelLower.includes("qwen-max");
+
+  // 如果是没有配置 visionModel 的纯文本模型，直接跳过视觉分析，避免报错
+  if (isKnownTextOnly && !config.visionModel) {
+    console.warn(`[analyzeProduct] 检测到当前使用的模型是纯文本模型 (${model})，无法直接分析图片。已自动跳过视觉分析，直接进行脚本生成。如需开启图片分析，请在设置中配置支持视觉的模型（如 gpt-4o, qwen-vl 等）作为 visionModel。`);
+    return "";
+  }
+
+  const client = createClient(config);
 
   // 构建带图片的消息内容
   const imageContent: OpenAI.Chat.Completions.ChatCompletionContentPart[] = imageUrls.map(
