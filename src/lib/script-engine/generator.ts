@@ -167,32 +167,76 @@ function validateScript(raw: Record<string, unknown>, fallbackStyleType: string)
  * @returns 生成的脚本数组
  */
 export async function generateScript(input: ScriptInput): Promise<GeneratedScript[]> {
-  const client = createClient(input.llmConfig);
-  const userPrompt = buildBatchPrompt(input, 3);
+  const requestedStyle = input.styleType as string;
 
-  // 调用 LLM 生成脚本
-  let response;
-  try {
-    response = await client.chat.completions.create({
-      model: input.llmConfig.model,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: 0.8,
-      max_tokens: 4096,
+  // 风格与切入角度配置
+  const styleConfigs: { style: ScriptStyleType; requirement: string }[] = [];
+
+  if (requestedStyle === "auto" || !requestedStyle) {
+    // 智能推荐模式：生成三种不同风格的脚本（痛点、场景、对比）
+    styleConfigs.push({
+      style: "pain_point",
+      requirement: "【切入角度】聚焦用户日常生活中的核心痛点，作为“救星”登场，用强烈的对比激发欲望。"
     });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    throw new Error(`LLM 请求失败（模型: ${input.llmConfig.model}，地址: ${input.llmConfig.baseUrl}）: ${msg}`);
+    styleConfigs.push({
+      style: "scene",
+      requirement: "【切入角度】聚焦轻松真实的生活场景，以第一人称Vlog种草的形式切入，强调产品自然融入生活的舒适体验。"
+    });
+    styleConfigs.push({
+      style: "comparison",
+      requirement: "【切入角度】聚焦横向对比与评测，强调本产品的高性价比与极致性能，突出同价位无可匹敌的绝对优势。"
+    });
+  } else {
+    // 特定风格模式：生成该风格下三个不同切入角度的脚本
+    // 先做风格归一化，将前端的连字符格式映射为标准的后端下划线格式
+    const normalizedStyle: ScriptStyleType =
+      requestedStyle === "pain-point" ? "pain_point" :
+      requestedStyle === "scenario" ? "scene" :
+      (requestedStyle as ScriptStyleType);
+
+    styleConfigs.push({
+      style: normalizedStyle,
+      requirement: "【切入角度一】聚焦极致性价比与日常实用性，突出“超值省心”和“闭眼入”。"
+    });
+    styleConfigs.push({
+      style: normalizedStyle,
+      requirement: "【切入角度二】聚焦黑科技、核心工艺细节或品质标准，突出产品的“专业感”和“高端质感”。"
+    });
+    styleConfigs.push({
+      style: normalizedStyle,
+      requirement: "【切入角度三】聚焦特定受众人群（如上班族、学生党或家庭）的细分痛点场景，突出“专属定制”。"
+    });
   }
 
-  const content = response.choices[0]?.message?.content;
-  if (!content) {
-    throw new Error("LLM 未返回有效内容");
+  // 并行调用 LLM 生成 3 个不同的脚本
+  const tasks = styleConfigs.map(async (cfg, index) => {
+    const singleInput: ScriptInput = {
+      ...input,
+      styleType: cfg.style,
+      customRequirements: input.customRequirements
+        ? `${input.customRequirements}\n\n注意：本次生成请遵循以下特定切入点：\n${cfg.requirement}`
+        : `注意：本次生成请遵循以下特定切入点：\n${cfg.requirement}`
+    };
+
+    try {
+      const script = await generateSingleScript(singleInput);
+      // 附加实际使用的规范风格类型
+      script.styleType = cfg.style;
+      return script;
+    } catch (err) {
+      console.error(`并行生成第 ${index + 1} 个脚本（风格: ${cfg.style}）失败:`, err);
+      return null;
+    }
+  });
+
+  const results = await Promise.all(tasks);
+  const validScripts = results.filter((r): r is GeneratedScript => r !== null);
+
+  if (validScripts.length === 0) {
+    throw new Error("生成脚本失败：所有并行生成任务均已失败，请检查您的 LLM 配置或网络连接。");
   }
 
-  return parseScriptResponse(content, input.styleType);
+  return validScripts;
 }
 
 /**
