@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
-import { LuArrowLeft, LuPlay, LuChevronDown, LuArrowRight, LuLoader, LuFileText } from "react-icons/lu";
+import { LuArrowLeft, LuPlay, LuChevronDown, LuArrowRight, LuLoader, LuFileText, LuCheckCircle, LuXCircle } from "react-icons/lu";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,6 @@ import {
 } from "@/components/ui/select";
 import type { Shot } from "@/lib/db/schema";
 
-// 视频片段
 interface VideoClipItem {
   shotId: number;
   type: Shot["type"];
@@ -26,18 +25,15 @@ interface VideoClipItem {
   transition: "ai_start_end" | "ai_reference" | "direct_concat" | "ffmpeg_fade";
 }
 
-// 合成配置
 interface ComposeConfig {
   ttsEnabled: boolean;
   ttsVoice: string;
   bgm: string;
-  subtitleSize: number;
   subtitlePosition: "bottom" | "center" | "top";
   aspectRatio: "9:16" | "16:9" | "1:1";
   resolution: "720p" | "1080p";
 }
 
-// 转场标签
 const transitionLabels: Record<string, string> = {
   ai_start_end: "AI 智能过渡",
   ai_reference: "AI 参考过渡",
@@ -45,7 +41,6 @@ const transitionLabels: Record<string, string> = {
   ffmpeg_fade: "渐变过渡",
 };
 
-// 镜头类型标签
 const shotTypeLabels: Record<Shot["type"], { label: string; color: string }> = {
   hook: { label: "钩子", color: "bg-red-500/20 text-red-400" },
   pain_point: { label: "痛点", color: "bg-orange-500/20 text-orange-400" },
@@ -61,21 +56,20 @@ export default function VideoPage() {
   const [clips, setClips] = useState<VideoClipItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [config, setConfig] = useState<ComposeConfig>({
-    ttsEnabled: true,
+    ttsEnabled: false,
     ttsVoice: "female-gentle",
-    bgm: "upbeat",
-    subtitleSize: 24,
+    bgm: "none",
     subtitlePosition: "bottom",
     aspectRatio: "9:16",
     resolution: "1080p",
   });
 
-  // 合成状态
   const [isComposing, setIsComposing] = useState(false);
   const [composeProgress, setComposeProgress] = useState(0);
   const [composeDone, setComposeDone] = useState(false);
+  const [composeError, setComposeError] = useState<string | null>(null);
+  const [videoInfo, setVideoInfo] = useState<{ fileSizeMB: string; shotCount: number } | null>(null);
 
-  // 从数据库加载真实脚本数据
   useEffect(() => {
     if (!id) return;
     setLoading(true);
@@ -95,20 +89,14 @@ export default function VideoPage() {
             transition: (shot.transition ?? "ai_start_end") as VideoClipItem["transition"],
           }));
           setClips(videoClips);
-        } else {
-          setClips([]);
         }
       })
-      .catch((err) => {
-        console.error("加载视频数据失败:", err);
-        setClips([]);
-      })
+      .catch(console.error)
       .finally(() => setLoading(false));
   }, [id]);
 
   const totalDuration = clips.reduce((sum, c) => sum + c.duration, 0);
 
-  // 更新片段转场
   const updateTransition = (shotId: number, transition: string) => {
     setClips((prev) =>
       prev.map((c) =>
@@ -117,23 +105,50 @@ export default function VideoPage() {
     );
   };
 
-  // 模拟合成过程（实际需接入视频合成服务）
-  const startCompose = () => {
+  // 调用真实的视频合成 API
+  const startCompose = async () => {
     setIsComposing(true);
     setComposeProgress(0);
     setComposeDone(false);
+    setComposeError(null);
 
-    const interval = setInterval(() => {
+    // 模拟进度条（实际上是服务端在处理）
+    const progressInterval = setInterval(() => {
       setComposeProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setIsComposing(false);
-          setComposeDone(true);
-          return 100;
+        if (prev >= 90) {
+          clearInterval(progressInterval);
+          return 90;
         }
-        return prev + 2;
+        return prev + Math.random() * 8;
       });
-    }, 100);
+    }, 800);
+
+    try {
+      const res = await fetch(`/api/project/${id}/compose`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config }),
+      });
+
+      clearInterval(progressInterval);
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "合成失败，请重试");
+      }
+
+      const data = await res.json();
+      setComposeProgress(100);
+      setComposeDone(true);
+      setVideoInfo({ fileSizeMB: data.fileSizeMB, shotCount: data.shotCount });
+    } catch (err) {
+      clearInterval(progressInterval);
+      setComposeError(err instanceof Error ? err.message : "合成失败，请重试");
+      setIsComposing(false);
+      setComposeProgress(0);
+    } finally {
+      setIsComposing(false);
+    }
   };
 
   if (loading) {
@@ -149,7 +164,6 @@ export default function VideoPage() {
 
   return (
     <div className="min-h-screen grid-bg">
-      {/* 顶部导航 */}
       <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-6">
           <div className="flex items-center gap-4">
@@ -165,8 +179,6 @@ export default function VideoPage() {
             <span className="text-muted-foreground">/</span>
             <span className="text-sm text-muted-foreground">{project?.name || "未命名项目"}</span>
           </div>
-
-          {/* 步骤进度 */}
           <div className="flex items-center gap-1">
             {["脚本", "素材", "视频", "导出"].map((step, i) => (
               <div key={step} className="flex items-center">
@@ -184,7 +196,6 @@ export default function VideoPage() {
       </header>
 
       <main className="mx-auto max-w-7xl px-6 py-8">
-        {/* 没有脚本数据时的空状态 */}
         {clips.length === 0 ? (
           <Card className="glass-card">
             <CardContent className="flex flex-col items-center justify-center py-20 text-center">
@@ -192,20 +203,15 @@ export default function VideoPage() {
                 <LuFileText className="w-7 h-7 text-muted-foreground" />
               </div>
               <h3 className="text-base font-semibold mb-2">还没有脚本数据</h3>
-              <p className="text-sm text-muted-foreground mb-6 max-w-sm">
-                请先返回脚本页面生成脚本，再进入素材生成后，才能进行视频合成
-              </p>
+              <p className="text-sm text-muted-foreground mb-6">请先生成脚本，再进行视频合成</p>
               <Link href={`/project/${id}/script`}>
-                <Button variant="outline">
-                  <LuArrowLeft className="w-4 h-4 mr-1" />
-                  返回脚本页面
-                </Button>
+                <Button variant="outline"><LuArrowLeft className="w-4 h-4 mr-1" />返回脚本页面</Button>
               </Link>
             </CardContent>
           </Card>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* 左侧：视频时间线 */}
+            {/* 左侧：时间线 */}
             <div className="lg:col-span-2">
               <div className="flex items-center justify-between mb-4">
                 <div>
@@ -214,8 +220,7 @@ export default function VideoPage() {
                 </div>
                 <Link href={`/project/${id}/assets`}>
                   <Button variant="outline" size="sm" className="text-xs">
-                    <LuArrowLeft className="w-3.5 h-3.5 mr-1" />
-                    返回素材
+                    <LuArrowLeft className="w-3.5 h-3.5 mr-1" />返回素材
                   </Button>
                 </Link>
               </div>
@@ -225,35 +230,25 @@ export default function VideoPage() {
                   const typeInfo = shotTypeLabels[clip.type] ?? { label: clip.type, color: "bg-zinc-500/20 text-zinc-400" };
                   return (
                     <div key={clip.shotId}>
-                      {/* 片段卡片 */}
                       <Card className="glass-card">
                         <CardContent className="p-4">
                           <div className="flex items-center gap-4">
-                            {/* 缩略图 */}
                             <div className="w-20 h-14 bg-muted/30 rounded-md shrink-0 flex items-center justify-center border border-border/30">
                               <div className="w-full h-full bg-gradient-to-br from-primary/20 to-primary/5 rounded-md flex items-center justify-center">
                                 <LuPlay className="w-4 h-4 text-primary/60" />
                               </div>
                             </div>
-
-                            {/* 信息 */}
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1">
-                                <Badge className={`${typeInfo.color} border-0 text-[10px]`}>
-                                  {typeInfo.label}
-                                </Badge>
+                                <Badge className={`${typeInfo.color} border-0 text-[10px]`}>{typeInfo.label}</Badge>
                                 <span className="text-xs text-muted-foreground">{clip.duration}s</span>
                               </div>
                               {clip.voiceover ? (
-                                <p className="text-xs text-muted-foreground truncate">
-                                  🎙 {clip.voiceover}
-                                </p>
+                                <p className="text-xs text-muted-foreground truncate">🎙 {clip.voiceover}</p>
                               ) : (
                                 <p className="text-xs text-muted-foreground/40 italic">无配音文案</p>
                               )}
                             </div>
-
-                            {/* 序号 */}
                             <span className="text-sm font-bold text-muted-foreground/30 shrink-0">
                               {String(clip.shotId).padStart(2, "0")}
                             </span>
@@ -261,7 +256,6 @@ export default function VideoPage() {
                         </CardContent>
                       </Card>
 
-                      {/* 转场选择器（最后一个片段后面不显示） */}
                       {index < clips.length - 1 && (
                         <div className="flex items-center justify-center py-1.5">
                           <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-muted/20 border border-border/30">
@@ -271,10 +265,9 @@ export default function VideoPage() {
                               onChange={(e) => updateTransition(clip.shotId, e.target.value)}
                               className="text-[11px] text-muted-foreground bg-transparent border-none outline-none cursor-pointer"
                             >
-                              <option value="ai_start_end">{transitionLabels.ai_start_end}</option>
-                              <option value="ai_reference">{transitionLabels.ai_reference}</option>
-                              <option value="direct_concat">{transitionLabels.direct_concat}</option>
-                              <option value="ffmpeg_fade">{transitionLabels.ffmpeg_fade}</option>
+                              {Object.entries(transitionLabels).map(([v, l]) => (
+                                <option key={v} value={v}>{l}</option>
+                              ))}
                             </select>
                           </div>
                         </div>
@@ -289,55 +282,6 @@ export default function VideoPage() {
             <div className="lg:col-span-1 space-y-4">
               <h2 className="text-base font-semibold">合成设置</h2>
 
-              {/* 配音设置 */}
-              <Card className="glass-card">
-                <CardContent className="p-4 space-y-4">
-                  <Label className="text-sm font-medium">配音 (TTS)</Label>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">启用自动配音</span>
-                    <button
-                      onClick={() => setConfig((c) => ({ ...c, ttsEnabled: !c.ttsEnabled }))}
-                      className={`relative w-10 h-5 rounded-full transition-colors ${config.ttsEnabled ? "bg-primary" : "bg-muted"}`}
-                    >
-                      <div className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${config.ttsEnabled ? "translate-x-5" : "translate-x-0.5"}`} />
-                    </button>
-                  </div>
-                  {config.ttsEnabled && (
-                    <Select value={config.ttsVoice} onValueChange={(v) => setConfig((c) => ({ ...c, ttsVoice: v ?? c.ttsVoice }))}>
-                      <SelectTrigger className="bg-muted/30 border-border/50 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="female-gentle">女声 - 温柔</SelectItem>
-                        <SelectItem value="female-energetic">女声 - 活力</SelectItem>
-                        <SelectItem value="male-warm">男声 - 温暖</SelectItem>
-                        <SelectItem value="male-pro">男声 - 专业</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* 背景音乐 */}
-              <Card className="glass-card">
-                <CardContent className="p-4 space-y-3">
-                  <Label className="text-sm font-medium">背景音乐</Label>
-                  <Select value={config.bgm} onValueChange={(v) => setConfig((c) => ({ ...c, bgm: v ?? c.bgm }))}>
-                    <SelectTrigger className="bg-muted/30 border-border/50 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">无背景音乐</SelectItem>
-                      <SelectItem value="upbeat">轻快节奏</SelectItem>
-                      <SelectItem value="chill">舒缓放松</SelectItem>
-                      <SelectItem value="energetic">动感活力</SelectItem>
-                      <SelectItem value="emotional">情感温暖</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </CardContent>
-              </Card>
-
-              {/* 字幕设置 */}
               <Card className="glass-card">
                 <CardContent className="p-4 space-y-3">
                   <Label className="text-sm font-medium">字幕位置</Label>
@@ -346,11 +290,7 @@ export default function VideoPage() {
                       <button
                         key={pos}
                         onClick={() => setConfig((c) => ({ ...c, subtitlePosition: pos }))}
-                        className={`h-9 rounded-md text-xs border transition-all ${
-                          config.subtitlePosition === pos
-                            ? "border-primary bg-primary/10 text-primary"
-                            : "border-border/50 bg-muted/20 text-muted-foreground hover:border-primary/40"
-                        }`}
+                        className={`h-9 rounded-md text-xs border transition-all ${config.subtitlePosition === pos ? "border-primary bg-primary/10 text-primary" : "border-border/50 bg-muted/20 text-muted-foreground hover:border-primary/40"}`}
                       >
                         {pos === "bottom" ? "底部" : pos === "center" ? "居中" : "顶部"}
                       </button>
@@ -359,7 +299,6 @@ export default function VideoPage() {
                 </CardContent>
               </Card>
 
-              {/* 画面设置 */}
               <Card className="glass-card">
                 <CardContent className="p-4 space-y-4">
                   <Label className="text-sm font-medium">画面设置</Label>
@@ -370,11 +309,7 @@ export default function VideoPage() {
                         <button
                           key={ratio}
                           onClick={() => setConfig((c) => ({ ...c, aspectRatio: ratio }))}
-                          className={`h-9 rounded-md text-xs border transition-all ${
-                            config.aspectRatio === ratio
-                              ? "border-primary bg-primary/10 text-primary"
-                              : "border-border/50 bg-muted/20 text-muted-foreground hover:border-primary/40"
-                          }`}
+                          className={`h-9 rounded-md text-xs border transition-all ${config.aspectRatio === ratio ? "border-primary bg-primary/10 text-primary" : "border-border/50 bg-muted/20 text-muted-foreground hover:border-primary/40"}`}
                         >
                           {ratio === "9:16" ? "竖屏" : ratio === "16:9" ? "横屏" : "方形"}
                         </button>
@@ -388,11 +323,7 @@ export default function VideoPage() {
                         <button
                           key={res}
                           onClick={() => setConfig((c) => ({ ...c, resolution: res }))}
-                          className={`h-9 rounded-md text-xs border transition-all ${
-                            config.resolution === res
-                              ? "border-primary bg-primary/10 text-primary"
-                              : "border-border/50 bg-muted/20 text-muted-foreground hover:border-primary/40"
-                          }`}
+                          className={`h-9 rounded-md text-xs border transition-all ${config.resolution === res ? "border-primary bg-primary/10 text-primary" : "border-border/50 bg-muted/20 text-muted-foreground hover:border-primary/40"}`}
                         >
                           {res}
                         </button>
@@ -402,19 +333,33 @@ export default function VideoPage() {
                 </CardContent>
               </Card>
 
-              {/* 合成按钮 */}
+              {/* 合成状态 */}
               <div className="space-y-3">
-                {(isComposing || composeDone) && (
+                {/* 错误提示 */}
+                {composeError && (
+                  <div className="flex items-start gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+                    <LuXCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                    <p className="text-xs text-red-400">{composeError}</p>
+                  </div>
+                )}
+
+                {/* 进度条 */}
+                {(isComposing || composeDone) && !composeError && (
                   <div>
                     <div className="h-2 bg-muted/30 rounded-full overflow-hidden">
                       <div
-                        className={`h-full rounded-full transition-all duration-200 ${composeDone ? "bg-emerald-500" : "brand-gradient"}`}
-                        style={{ width: `${composeProgress}%` }}
+                        className={`h-full rounded-full transition-all duration-500 ${composeDone ? "bg-emerald-500" : "brand-gradient"}`}
+                        style={{ width: `${Math.min(composeProgress, 100)}%` }}
                       />
                     </div>
-                    <p className="text-xs text-muted-foreground text-center mt-2">
-                      {composeDone ? "合成完成！（注：当前为模拟合成，实际视频合成功能开发中）" : `正在合成视频... ${composeProgress}%`}
-                    </p>
+                    <div className="flex items-center justify-between mt-2">
+                      <p className="text-xs text-muted-foreground">
+                        {composeDone
+                          ? `✅ 合成完成！${videoInfo ? `共 ${videoInfo.shotCount} 个片段，${videoInfo.fileSizeMB} MB` : ""}`
+                          : `正在合成视频... ${Math.round(composeProgress)}%`}
+                      </p>
+                      {composeDone && <LuCheckCircle className="w-4 h-4 text-emerald-500" />}
+                    </div>
                   </div>
                 )}
 
@@ -429,15 +374,12 @@ export default function VideoPage() {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                       </svg>
-                      合成中...
+                      合成中（请稍候...）
                     </>
                   ) : composeDone ? (
                     "重新合成"
                   ) : (
-                    <>
-                      <LuPlay className="w-4 h-4 mr-1" />
-                      开始合成
-                    </>
+                    <><LuPlay className="w-4 h-4 mr-1" />开始合成</>
                   )}
                 </Button>
 
