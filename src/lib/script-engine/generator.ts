@@ -209,8 +209,11 @@ export async function generateScript(input: ScriptInput): Promise<GeneratedScrip
     });
   }
 
-  // 并行调用 LLM 生成 3 个不同的脚本
-  const tasks = styleConfigs.map(async (cfg, index) => {
+  // 顺序调用 LLM 生成 3 个不同的脚本，避免并发请求过多导致 429 频控报错
+  const results: GeneratedScript[] = [];
+
+  for (let i = 0; i < styleConfigs.length; i++) {
+    const cfg = styleConfigs[i];
     const singleInput: ScriptInput = {
       ...input,
       styleType: cfg.style,
@@ -219,25 +222,51 @@ export async function generateScript(input: ScriptInput): Promise<GeneratedScrip
         : `注意：本次生成请遵循以下特定切入点：\n${cfg.requirement}`
     };
 
-    try {
-      const script = await generateSingleScript(singleInput);
-      // 附加实际使用的规范风格类型
-      script.styleType = cfg.style;
-      return script;
-    } catch (err) {
-      console.error(`并行生成第 ${index + 1} 个脚本（风格: ${cfg.style}）失败:`, err);
-      return null;
+    let retries = 3;
+    let delayMs = 1500; // 首次重试等待 1.5 秒
+    let script: GeneratedScript | null = null;
+
+    while (retries > 0) {
+      try {
+        script = await generateSingleScript(singleInput);
+        script.styleType = cfg.style;
+        break; // 成功获取，退出重试循环
+      } catch (err: any) {
+        retries--;
+        const errStr = String(err);
+        const isRateLimit =
+          err?.status === 429 ||
+          errStr.includes("429") ||
+          errStr.includes("速率限制") ||
+          errStr.includes("rate limit") ||
+          errStr.includes("频控");
+
+        if (isRateLimit && retries > 0) {
+          console.warn(`[generateScript] 触发 API 频控限制 (429)，等待 ${delayMs}ms 后进行重试... (剩余重试次数: ${retries})`);
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          delayMs *= 2; // 指数级退避
+        } else {
+          console.error(`生成第 ${i + 1} 个脚本（风格: ${cfg.style}）失败:`, err);
+          break; // 非 429 错误或重试次数用尽，跳出重试
+        }
+      }
     }
-  });
 
-  const results = await Promise.all(tasks);
-  const validScripts = results.filter((r): r is GeneratedScript => r !== null);
+    if (script) {
+      results.push(script);
+    }
 
-  if (validScripts.length === 0) {
-    throw new Error("生成脚本失败：所有并行生成任务均已失败，请检查您的 LLM 配置或网络连接。");
+    // 每次生成之间，强制增加 800ms 的冷却缓冲，防止下一条请求立刻触发并发限制
+    if (i < styleConfigs.length - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 800));
+    }
   }
 
-  return validScripts;
+  if (results.length === 0) {
+    throw new Error("生成脚本失败：所有生成任务均已失败，请检查您的 LLM 配置或网络连接。");
+  }
+
+  return results;
 }
 
 /**
