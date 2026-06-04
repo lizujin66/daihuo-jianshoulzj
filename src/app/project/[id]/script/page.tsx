@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
-import { LuWand, LuClock, LuImage, LuArrowRight, LuBookmarkPlus } from "react-icons/lu";
+import { LuWand, LuClock, LuImage, LuArrowRight, LuBookmarkPlus, LuLoader2 } from "react-icons/lu";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -77,9 +77,35 @@ const styleLabels: Record<string, string> = {
 export default function ScriptPage() {
   const { id } = useParams<{ id: string }>();
   const [selectedScript, setSelectedScript] = useState(0);
-  const [scripts] = useState(mockScripts);
+  const [scripts, setScripts] = useState<any[]>([]);
+  const [project, setProject] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const [isGenerating] = useState(false);
   const currentScript = scripts[selectedScript];
+
+  useEffect(() => {
+    if (!id) return;
+    setLoading(true);
+
+    Promise.all([
+      fetch(`/api/project/${id}`).then((res) => (res.ok ? res.json() : null)),
+      fetch(`/api/project/${id}/script`).then((res) => (res.ok ? res.json() : [])),
+    ])
+      .then(([projData, scriptData]) => {
+        if (projData) setProject(projData);
+        if (scriptData && scriptData.length > 0) {
+          setScripts(scriptData);
+        } else {
+          // 数据库里如果没有，说明没有生成过或生成失败，使用 mock 数据兜底
+          setScripts(mockScripts);
+        }
+      })
+      .catch((err) => {
+        console.error("加载项目数据或脚本失败:", err);
+        setScripts(mockScripts);
+      })
+      .finally(() => setLoading(false));
+  }, [id]);
 
   // 模板相关状态
   const { addTemplate } = useTemplateStore();
@@ -110,6 +136,17 @@ export default function ScriptPage() {
     setTimeout(() => setSavedTip(false), 3000);
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen grid-bg flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <LuLoader2 className="animate-spin h-8 w-8 text-primary" />
+          <span className="text-sm text-muted-foreground">正在加载脚本数据...</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen grid-bg">
       {/* 顶部导航 */}
@@ -126,7 +163,7 @@ export default function ScriptPage() {
               <span className="text-lg font-bold tracking-tight">带货剪手</span>
             </Link>
             <span className="text-muted-foreground">/</span>
-            <span className="text-sm text-muted-foreground">Tempo 德宝纸巾推广</span>
+            <span className="text-sm text-muted-foreground">{project?.name || "未命名项目"}</span>
           </div>
 
           {/* 步骤进度 */}

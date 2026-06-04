@@ -1,14 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { LuSettings, LuPlus, LuZap, LuVideo, LuFilm, LuPackage, LuTriangleAlert } from "react-icons/lu";
+import { useState, useEffect } from "react";
+import { LuSettings, LuPlus, LuZap, LuVideo, LuFilm, LuPackage, LuTriangleAlert, LuLoader2 } from "react-icons/lu";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useSettingsStore } from "@/lib/stores/settings-store";
 
-// 模拟项目数据（后续接数据库）
+// 模拟项目数据（保留作为初始或无网络时的参考）
 const mockProjects = [
   {
     id: "1",
@@ -36,7 +36,29 @@ const statusMap: Record<string, { label: string; color: string }> = {
 };
 
 export default function HomePage() {
-  const [projects] = useState(mockProjects);
+  const [projects, setProjects] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/project")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          const formatted = data.map((p: any) => ({
+            ...p,
+            updatedAt: p.updatedAt ? new Date(p.updatedAt) : new Date(),
+          }));
+          setProjects(formatted);
+        } else {
+          // 如果数据库里空空如也，也可以展示 mock 项目作为展示
+          setProjects([]);
+        }
+      })
+      .catch((err) => {
+        console.error("加载项目列表失败:", err);
+      })
+      .finally(() => setLoading(false));
+  }, []);
 
   // 检查是否已配置 API 服务
   const { llm, providers } = useSettingsStore();
@@ -198,7 +220,14 @@ export default function HomePage() {
             <span className="text-sm text-muted-foreground">{projects.length} 个项目</span>
           </div>
 
-          {projects.length === 0 ? (
+          {loading ? (
+            <Card className="glass-card">
+              <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+                <LuLoader2 className="animate-spin h-8 w-8 text-primary mb-3" />
+                <p className="text-sm text-muted-foreground">正在加载我的项目...</p>
+              </CardContent>
+            </Card>
+          ) : projects.length === 0 ? (
             <Card className="glass-card">
               <CardContent className="flex flex-col items-center justify-center py-16 text-center">
                 <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted/50">

@@ -37,10 +37,15 @@ async function imagePathToBase64(imagePath: string): Promise<string> {
   }
 }
 
+import { getDb } from "@/lib/db";
+import { projects, scripts as dbScripts } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
+
 // 生成带货脚本
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const {
+    projectId,
     productImages,
     productName,
     productCategory,
@@ -83,6 +88,42 @@ export async function POST(req: NextRequest) {
       targetDuration: duration || 30,
       llmConfig,
     });
+
+    // 将生成结果持久化存储到 SQLite 数据库中
+    try {
+      const db = getDb();
+      if (projectId) {
+        // 1. 如果有商品视觉分析报告，持久化更新到 projects 表
+        if (analysis) {
+          await db
+            .update(projects)
+            .set({ productAnalysis: analysis, status: "scripting" })
+            .where(eq(projects.id, projectId));
+        } else {
+          await db
+            .update(projects)
+            .set({ status: "scripting" })
+            .where(eq(projects.id, projectId));
+        }
+
+        // 2. 清理可能已有的历史脚本（防止重复生成），然后写入新生成的 3 个脚本方案
+        await db.delete(dbScripts).where(eq(dbScripts.projectId, projectId));
+
+        for (const script of scripts) {
+          await db.insert(dbScripts).values({
+            projectId: projectId,
+            title: script.title,
+            styleType: script.styleType,
+            totalDuration: script.totalDuration,
+            shots: script.shots,
+            selected: false,
+          });
+        }
+        console.log(`[POST /api/llm/script] 成功保存 ${scripts.length} 个生成的脚本到数据库（项目 ID: ${projectId}）`);
+      }
+    } catch (dbError) {
+      console.error("[POST /api/llm/script] 将脚本写入数据库时出错:", dbError);
+    }
 
     return NextResponse.json({ scripts, analysis });
   } catch (error) {
