@@ -1,30 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { LuSettings, LuPlus, LuZap, LuVideo, LuFilm, LuPackage, LuTriangleAlert, LuLoader } from "react-icons/lu";
+import { useState, useEffect, useCallback } from "react";
+import { LuSettings, LuPlus, LuZap, LuVideo, LuFilm, LuPackage, LuTriangleAlert, LuLoader, LuTrash2 } from "react-icons/lu";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useSettingsStore } from "@/lib/stores/settings-store";
-
-// 模拟项目数据（保留作为初始或无网络时的参考）
-const mockProjects = [
-  {
-    id: "1",
-    name: "Tempo 德宝纸巾推广",
-    productName: "德宝纸巾",
-    status: "video" as const,
-    updatedAt: new Date("2026-03-20"),
-  },
-  {
-    id: "2",
-    name: "小米手环8测评",
-    productName: "小米手环8",
-    status: "done" as const,
-    updatedAt: new Date("2026-03-19"),
-  },
-];
 
 const statusMap: Record<string, { label: string; color: string }> = {
   draft: { label: "草稿", color: "bg-zinc-500/20 text-zinc-400" },
@@ -38,32 +20,55 @@ const statusMap: Record<string, { label: string; color: string }> = {
 export default function HomePage() {
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadProjects = useCallback(() => {
+    setLoading(true);
     fetch("/api/project")
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           const formatted = data.map((p: any) => ({
             ...p,
             updatedAt: p.updatedAt ? new Date(p.updatedAt) : new Date(),
           }));
           setProjects(formatted);
         } else {
-          // 如果数据库里空空如也，也可以展示 mock 项目作为展示
           setProjects([]);
         }
       })
       .catch((err) => {
         console.error("加载项目列表失败:", err);
+        setProjects([]);
       })
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    loadProjects();
+  }, [loadProjects]);
+
+  const handleDelete = async (id: string) => {
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/project/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        setProjects((prev) => prev.filter((p) => p.id !== id));
+      } else {
+        console.error("删除项目失败");
+      }
+    } catch (err) {
+      console.error("删除项目出错:", err);
+    } finally {
+      setDeletingId(null);
+      setConfirmDeleteId(null);
+    }
+  };
+
   // 检查是否已配置 API 服务
-  const { llm, providers } = useSettingsStore();
+  const { llm } = useSettingsStore();
   const isConfigured = llm.apiKey.length > 0;
-  const hasAnyProvider = Object.values(providers).some(p => p.enabled && p.apiKey.length > 0);
 
   return (
     <div className="min-h-screen grid-bg">
@@ -242,32 +247,77 @@ export default function HomePage() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {projects.map((project) => {
-                const status = statusMap[project.status];
+                const status = statusMap[project.status] ?? statusMap.draft;
                 return (
-                  <Link key={project.id} href={`/project/${project.id}/script`}>
-                    <Card className="card-hover glass-card cursor-pointer group">
-                      <CardContent className="p-0">
-                        <div className="relative aspect-video bg-muted/30 rounded-t-lg overflow-hidden">
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <LuFilm className="w-8 h-8 text-muted-foreground/50" />
+                  <div key={project.id} className="relative group">
+                    <Link href={`/project/${project.id}/script`}>
+                      <Card className="card-hover glass-card cursor-pointer">
+                        <CardContent className="p-0">
+                          <div className="relative aspect-video bg-muted/30 rounded-t-lg overflow-hidden">
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <LuFilm className="w-8 h-8 text-muted-foreground/50" />
+                            </div>
+                            <div className="absolute top-2 right-2">
+                              <Badge className={`${status.color} border-0 text-xs`}>
+                                {status.label}
+                              </Badge>
+                            </div>
                           </div>
-                          <div className="absolute top-2 right-2">
-                            <Badge className={`${status.color} border-0 text-xs`}>
-                              {status.label}
-                            </Badge>
+                          <div className="p-4">
+                            <h3 className="font-medium text-sm truncate group-hover:text-primary transition-colors">
+                              {project.name}
+                            </h3>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {project.productName} · {project.updatedAt.toLocaleDateString("zh-CN")}
+                            </p>
                           </div>
+                        </CardContent>
+                      </Card>
+                    </Link>
+
+                    {/* 删除按钮 */}
+                    {confirmDeleteId === project.id ? (
+                      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 rounded-lg bg-background/90 backdrop-blur-sm border border-destructive/40">
+                        <p className="text-sm font-medium text-center px-4">确定删除「{project.name}」？</p>
+                        <p className="text-xs text-muted-foreground px-4 text-center">删除后无法恢复，包括脚本和素材</p>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs"
+                            onClick={() => setConfirmDeleteId(null)}
+                          >
+                            取消
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            className="text-xs"
+                            disabled={deletingId === project.id}
+                            onClick={() => handleDelete(project.id)}
+                          >
+                            {deletingId === project.id ? (
+                              <LuLoader className="w-3 h-3 animate-spin mr-1" />
+                            ) : (
+                              <LuTrash2 className="w-3 h-3 mr-1" />
+                            )}
+                            确认删除
+                          </Button>
                         </div>
-                        <div className="p-4">
-                          <h3 className="font-medium text-sm truncate group-hover:text-primary transition-colors">
-                            {project.name}
-                          </h3>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {project.productName} · {project.updatedAt.toLocaleDateString("zh-CN")}
-                          </p>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </Link>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setConfirmDeleteId(project.id);
+                        }}
+                        className="absolute top-2 left-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity flex h-7 w-7 items-center justify-center rounded-full bg-background/80 border border-border/60 text-muted-foreground hover:text-destructive hover:border-destructive/60 hover:bg-destructive/10"
+                        title="删除项目"
+                      >
+                        <LuTrash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 );
               })}
             </div>
