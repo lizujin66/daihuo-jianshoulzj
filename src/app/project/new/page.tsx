@@ -241,7 +241,10 @@ export default function NewProjectPage() {
       if (selectedTemplateId) {
         incrementUseCount(selectedTemplateId);
       }
-      if (!scriptRes.ok) throw new Error("脚本生成失败，请检查 LLM 设置后重试");
+      if (!scriptRes.ok) {
+        const errData = await scriptRes.json().catch(() => ({}));
+        throw new Error(errData.error || "脚本生成失败，请检查 LLM 设置后重试");
+      }
 
       // 第4步：完成
       setProgress({ step: "done", percent: 100, message: "脚本生成完成！正在跳转..." });

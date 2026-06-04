@@ -410,18 +410,46 @@ export async function analyzeProduct(
   config: LLMConfig,
 ): Promise<string> {
   const model = config.visionModel || config.model;
+  const modelLower = model.toLowerCase();
+
+  // 显式检测是否支持视觉（如果包含这些关键字，则视为视觉模型）
+  const hasVisionKeywords =
+    modelLower.includes("vision") ||
+    modelLower.includes("vl") ||
+    modelLower.includes("gpt-4o") ||
+    modelLower.includes("gpt-4-turbo") ||
+    modelLower.includes("claude-3-5") ||
+    modelLower.includes("claude-3-opus") ||
+    modelLower.includes("claude-3-sonnet") ||
+    modelLower.includes("gemini-1.5") ||
+    modelLower.includes("gemini-2.0") ||
+    modelLower.includes("glm-4v") ||
+    modelLower.includes("internvl") ||
+    modelLower.includes("paligemma") ||
+    modelLower.includes("minicpm-v");
 
   // 检测是否为不支持视觉的已知文本模型
-  const modelLower = model.toLowerCase();
   const isKnownTextOnly =
-    modelLower.includes("deepseek") ||
-    modelLower.includes("gpt-3.5") ||
-    modelLower.includes("r1") ||
-    modelLower.includes("v3") ||
-    (modelLower.includes("llama") && !modelLower.includes("vision")) ||
-    modelLower.includes("qwen-turbo") ||
-    modelLower.includes("qwen-plus") ||
-    modelLower.includes("qwen-max");
+    !hasVisionKeywords && (
+      modelLower.includes("deepseek") ||
+      modelLower.includes("gpt-3.5") ||
+      modelLower.includes("gpt-4-") || // 如 gpt-4-0613 等（除 gpt-4o, gpt-4-turbo 外）
+      modelLower.includes("r1") ||
+      modelLower.includes("v3") ||
+      modelLower.includes("llama") ||
+      modelLower.includes("qwen") ||
+      modelLower.includes("moonshot") ||
+      modelLower.includes("kimi") ||
+      modelLower.includes("glm-4") ||
+      modelLower.includes("doubao") ||
+      modelLower.includes("gemma") ||
+      modelLower.includes("mistral") ||
+      modelLower.includes("mixtral") ||
+      modelLower.includes("yi") ||
+      modelLower.includes("baichuan") ||
+      modelLower.includes("internlm") ||
+      modelLower.includes("spark")
+    );
 
   // 如果是没有配置 visionModel 的纯文本模型，直接跳过视觉分析，避免报错
   if (isKnownTextOnly && !config.visionModel) {
