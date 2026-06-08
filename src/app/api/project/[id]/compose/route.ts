@@ -23,6 +23,32 @@ function getFfmpegPath(): string {
   throw new Error("未找到 FFmpeg，请先安装：brew install ffmpeg");
 }
 
+// 检查是否支持 drawtext
+let _hasDrawtext: boolean | null = null;
+function checkDrawtextSupport(ffmpegPath: string): boolean {
+  if (_hasDrawtext !== null) return _hasDrawtext;
+  try {
+    const out = execSync(`${ffmpegPath} -filters`, { encoding: "utf8" });
+    _hasDrawtext = out.includes("drawtext");
+  } catch {
+    _hasDrawtext = false;
+  }
+  return _hasDrawtext;
+}
+
+// 检查是否支持 macOS say (用于文本转语音)
+let _hasSay: boolean | null = null;
+function checkSaySupport(): boolean {
+  if (_hasSay !== null) return _hasSay;
+  try {
+    const out = execSync("which say", { encoding: "utf8" }).trim();
+    _hasSay = out.length > 0;
+  } catch {
+    _hasSay = false;
+  }
+  return _hasSay;
+}
+
 // 将 /api/files/... 路径映射为本地文件系统路径
 function apiPathToLocal(apiPath: string): string | null {
   const match = apiPath.match(/\/api\/files\/(.+)/);
@@ -51,6 +77,8 @@ export async function POST(
 
   try {
     const ffmpegPath = getFfmpegPath();
+    const hasDrawtext = checkDrawtextSupport(ffmpegPath);
+    const hasSay = checkSaySupport();
 
     // 从数据库加载项目和脚本
     const db = getDb();
@@ -117,77 +145,90 @@ export async function POST(
     // 逐个分镜生成视频片段
     for (let i = 0; i < shots.length; i++) {
       const shot = shots[i];
-      const duration = shot.duration ?? 3;
+      let duration = shot.duration ?? 3;
       const clipPath = path.join(tmpDir, `clip_${i}.mp4`);
       clipPaths.push(clipPath);
 
-      // 选择背景：product_image 类型用商品图，其余用渐变色块
-      const useProductImage =
-        shot.visualSource === "product_image" && localImages.length > 0;
-      const imgPath = useProductImage
-        ? localImages[Math.min(i, localImages.length - 1)]
-        : null;
-
-      // 背景颜色根据镜头类型区分
-      const bgColors: Record<string, string> = {
-        hook: "0x1a0a2e",
-        pain_point: "0x2e1a0a",
-        product_reveal: "0x0a1a2e",
-        demo: "0x0a2e1a",
-        social_proof: "0x1a0a2e",
-        cta: "0x2e0a0a",
-      };
-      const bgColor = bgColors[shot.type] ?? "0x111827";
-
-      // 构建 vf 过滤链
-      let vf: string;
-      if (imgPath) {
-        vf = `scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=${bgColor},setsar=1`;
-      } else {
-        // 纯色背景 + 镜头描述文字
-        const descText = escapeFfmpegText(shot.description ?? `分镜 ${i + 1}`);
-        if (fontFile) {
-          vf = `scale=${W}:${H},setsar=1,drawtext=fontfile='${fontFile}':fontsize=40:fontcolor=white@0.85:text='${descText}':x=(w-tw)/2:y=(h-th)/2:line_spacing=10`;
-        } else {
-          vf = `scale=${W}:${H},setsar=1`;
+      // --- 1. 处理音频 (TTS) ---
+      let audioInput = "-f lavfi -i anullsrc=r=44100:cl=stereo";
+      let isAudioFile = false;
+      
+      if (shot.voiceover && hasSay) {
+        const audioPath = path.join(tmpDir, `audio_${i}.aiff`);
+        try {
+          // macOS: 使用 say 命令生成语音
+          execSync(`say -v Ting-Ting "${shot.voiceover}" -o "${audioPath}"`);
+          if (fs.existsSync(audioPath)) {
+            audioInput = `-i "${audioPath}"`;
+            isAudioFile = true;
+            // 自动调整视频时长匹配语音时长（延长 0.5 秒防止太突兀）
+            try {
+              const durStr = execSync(`ffprobe -i "${audioPath}" -show_entries format=duration -v quiet -of csv="p=0"`, { encoding: "utf8" }).trim();
+              const audioDuration = parseFloat(durStr);
+              if (!isNaN(audioDuration)) {
+                duration = Math.max(duration, audioDuration + 0.5);
+              }
+            } catch (e) {
+              console.warn("读取音频长度失败", e);
+            }
+          }
+        } catch (e) {
+          console.warn("生成语音失败", e);
         }
       }
 
-      // 如果有配音文案，在底部加字幕条
-      if (shot.voiceover && fontFile) {
+      // --- 2. 处理画面 ---
+      // 选择背景：product_image 类型用商品图，其余用渐变色块
+      const useProductImage = shot.visualSource === "product_image" && localImages.length > 0;
+      const imgPath = useProductImage ? localImages[Math.min(i, localImages.length - 1)] : null;
+
+      const bgColors: Record<string, string> = {
+        hook: "0x1a0a2e", pain_point: "0x2e1a0a", product_reveal: "0x0a1a2e",
+        demo: "0x0a2e1a", social_proof: "0x1a0a2e", cta: "0x2e0a0a",
+      };
+      const bgColor = bgColors[shot.type] ?? "0x111827";
+
+      let vf = imgPath 
+        ? `scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=${bgColor},setsar=1`
+        : `scale=${W}:${H},setsar=1`;
+
+      if (!imgPath && hasDrawtext && fontFile) {
+        const descText = escapeFfmpegText(shot.description ?? `分镜 ${i + 1}`);
+        vf += `,drawtext=fontfile='${fontFile}':fontsize=40:fontcolor=white@0.85:text='${descText}':x=(w-tw)/2:y=(h-th)/2:line_spacing=10`;
+      }
+
+      if (shot.voiceover && hasDrawtext && fontFile) {
         const voText = escapeFfmpegText(shot.voiceover.substring(0, 30));
         vf += `,drawtext=fontfile='${fontFile}':fontsize=36:fontcolor=white:text='${voText}':box=1:boxcolor=black@0.6:boxborderw=12:x=(w-tw)/2:y=h-th-80`;
       }
 
-      let args: string[];
+      // --- 3. 组合 FFmpeg 参数 ---
+      let args = [];
       if (imgPath) {
-        args = [
-          "-loop", "1",
-          "-i", imgPath,
-          "-t", String(duration),
-          "-vf", vf,
-          "-c:v", "libx264",
-          "-preset", "ultrafast",
-          "-pix_fmt", "yuv420p",
-          "-an",
-          "-y",
-          clipPath,
-        ];
+        args.push("-loop", "1", "-i", imgPath);
       } else {
-        // 用 lavfi 色块作为输入
-        args = [
-          "-f", "lavfi",
-          "-i", `color=c=${bgColor}:size=${W}x${H}:rate=30`,
-          "-t", String(duration),
-          "-vf", vf,
-          "-c:v", "libx264",
-          "-preset", "ultrafast",
-          "-pix_fmt", "yuv420p",
-          "-an",
-          "-y",
-          clipPath,
-        ];
+        args.push("-f", "lavfi", "-i", `color=c=${bgColor}:size=${W}x${H}:rate=30`);
       }
+
+      // 解析 audioInput (-f lavfi -i anullsrc... 或者 -i audio.aiff)
+      if (isAudioFile) {
+        args.push("-i", audioInput.replace("-i \"", "").replace("\"", ""));
+      } else {
+        args.push("-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo");
+      }
+
+      args.push(
+        "-t", String(duration),
+        "-vf", vf,
+        "-c:v", "libx264",
+        "-preset", "ultrafast",
+        "-pix_fmt", "yuv420p",
+        "-c:a", "aac",
+        "-b:a", "128k",
+        "-shortest",
+        "-y",
+        clipPath
+      );
 
       const result = spawnSync(ffmpegPath, args, {
         timeout: 60000,
@@ -196,15 +237,14 @@ export async function POST(
 
       if (result.status !== 0) {
         console.error(`[compose] clip_${i} 生成失败:`, result.stderr?.slice(-500));
-        // 跳过失败的片段，继续后续
-        clipPaths[i] = "";
+        clipPaths[i] = ""; // 标记失败
       }
     }
 
     // 生成 concat 列表（只包含成功生成的片段）
     const validClips = clipPaths.filter((p) => p && fs.existsSync(p));
     if (validClips.length === 0) {
-      return NextResponse.json({ error: "所有分镜生成失败，请检查 FFmpeg 安装" }, { status: 500 });
+      return NextResponse.json({ error: "所有分镜生成失败，请检查 FFmpeg 报错" }, { status: 500 });
     }
 
     const concatContent = validClips.map((p) => `file '${p}'`).join("\n");
@@ -221,6 +261,7 @@ export async function POST(
         "-preset", "fast",
         "-movflags", "+faststart",
         "-pix_fmt", "yuv420p",
+        "-c:a", "aac",
         "-y",
         outputPath,
       ],
