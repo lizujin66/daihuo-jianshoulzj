@@ -206,6 +206,9 @@ export async function POST(
       let args = [];
       if (imgPath) {
         args.push("-loop", "1", "-i", imgPath);
+      } else if (!hasDrawtext) {
+        // 如果不支持文字绘制，使用动态测试画面(testsrc)代替纯色，避免看起来像死机黑屏
+        args.push("-f", "lavfi", "-i", `testsrc=size=${W}x${H}:rate=30`);
       } else {
         args.push("-f", "lavfi", "-i", `color=c=${bgColor}:size=${W}x${H}:rate=30`);
       }
