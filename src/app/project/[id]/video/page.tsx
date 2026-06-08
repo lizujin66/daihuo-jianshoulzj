@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
-import { LuArrowLeft, LuPlay, LuChevronDown, LuArrowRight, LuLoader, LuFileText, LuCheckCircle, LuXCircle } from "react-icons/lu";
+import { LuArrowLeft, LuPlay, LuChevronDown, LuArrowRight, LuLoader, LuFileText, LuCheck, LuCircleAlert } from "react-icons/lu";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -338,7 +338,7 @@ export default function VideoPage() {
                 {/* 错误提示 */}
                 {composeError && (
                   <div className="flex items-start gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
-                    <LuXCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                    <LuCircleAlert className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
                     <p className="text-xs text-red-400">{composeError}</p>
                   </div>
                 )}
@@ -358,7 +358,7 @@ export default function VideoPage() {
                           ? `✅ 合成完成！${videoInfo ? `共 ${videoInfo.shotCount} 个片段，${videoInfo.fileSizeMB} MB` : ""}`
                           : `正在合成视频... ${Math.round(composeProgress)}%`}
                       </p>
-                      {composeDone && <LuCheckCircle className="w-4 h-4 text-emerald-500" />}
+                      {composeDone && <LuCheck className="w-4 h-4 text-emerald-500" />}
                     </div>
                   </div>
                 )}

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import {
   LuCheck, LuCircleCheck, LuFilm, LuDownload, LuFileText,
-  LuPlus, LuHouse, LuSmartphone, LuShuffle, LuLoader, LuInfo, LuXCircle
+  LuPlus, LuHouse, LuSmartphone, LuShuffle, LuLoader, LuInfo, LuCircleAlert
 } from "react-icons/lu";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
@@ -139,7 +139,7 @@ export default function ExportPage() {
           <div className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-white text-sm shadow-xl ${
             toastType === "error" ? "bg-red-600" : toastType === "info" ? "bg-blue-600" : "bg-emerald-600"
           }`}>
-            {toastType === "error" ? <LuXCircle className="w-4 h-4" /> : toastType === "info" ? <LuInfo className="w-4 h-4" /> : <LuCheck className="w-4 h-4" />}
+            {toastType === "error" ? <LuCircleAlert className="w-4 h-4" /> : toastType === "info" ? <LuInfo className="w-4 h-4" /> : <LuCheck className="w-4 h-4" />}
             {toast}
           </div>
         </div>
@@ -187,7 +187,7 @@ export default function ExportPage() {
             视频<span className="brand-gradient-text">{videoReady ? "生成完成" : "待合成"}</span>
           </h1>
           <p className="text-sm text-muted-foreground">
-            {videoReady ? "视频已生成完毕，点击下方按钮立即下载" : "请先返回视频合成页点击"开始合成"，完成后再来下载"}
+            {videoReady ? '视频已生成完毕，点击下方按钮立即下载' : '请先返回视频合成页点击「开始合成」，完成后再来下载'}
           </p>
         </div>
 

@@ -19,7 +19,7 @@ export async function GET(
 
   if (!fs.existsSync(videoPath)) {
     return NextResponse.json(
-      { error: "视频文件不存在，请先点击"开始合成"" },
+      { error: '视频文件不存在，请先点击「开始合成」' },
       { status: 404 }
     );
   }
@@ -32,7 +32,7 @@ export async function GET(
       .select({ name: projects.name })
       .from(projects)
       .where(eq(projects.id, id))
-      .then((r) => r[0]);
+      .then((r: any[]) => r[0]);
     if (proj?.name) projectName = proj.name;
   } catch {}
 

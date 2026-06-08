@@ -58,7 +58,7 @@ export async function POST(
       .select()
       .from(projects)
       .where(eq(projects.id, id))
-      .then((r) => r[0]);
+      .then((r: any[]) => r[0]);
 
     if (!projectRow) {
       return NextResponse.json({ error: "项目不存在" }, { status: 404 });
